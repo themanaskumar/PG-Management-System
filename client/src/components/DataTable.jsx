@@ -1,35 +1,50 @@
-// A reusable table that takes data and columns
-const DataTable = ({ columns, data, onEdit, onDelete }) => {
+import React from 'react';
+
+const DataTable = ({ columns, data, actions }) => {
   return (
-    <div className="overflow-x-auto shadow-md sm:rounded-lg">
-      <table className="w-full text-sm text-left text-gray-500">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border-collapse">
+        <thead className="bg-gray-100 text-gray-600 uppercase text-xs font-semibold">
           <tr>
             {columns.map((col) => (
-              <th key={col.key} className="px-6 py-3">{col.label}</th>
+              <th key={col.key} className="p-4 border-b">
+                {col.label}
+              </th>
             ))}
-            <th className="px-6 py-3">Actions</th>
+            {/* ONLY render this Header if 'actions' prop is passed */}
+            {actions && <th className="p-4 border-b text-center">Actions</th>}
           </tr>
         </thead>
-        <tbody>
-          {data.map((item) => (
-            <tr key={item._id} className="bg-white border-b hover:bg-gray-50">
+        <tbody className="divide-y divide-gray-100">
+          {data.map((row, index) => (
+            <tr key={index} className="hover:bg-gray-50 transition duration-150">
               {columns.map((col) => (
-                <td key={col.key} className="px-6 py-4">
-                  {/* Handle nested properties if needed, or just display */}
-                  {item[col.key]}
+                <td key={col.key} className="p-4 text-gray-700">
+                  {/* Handle missing data gracefully */}
+                  {row[col.key] !== undefined && row[col.key] !== null ? row[col.key] : '-'}
                 </td>
               ))}
-              <td className="px-6 py-4 flex gap-2">
-                 {onEdit && (
-                    <button onClick={() => onEdit(item)} className="text-blue-600 hover:underline">Edit</button>
-                 )}
-                 {onDelete && (
-                    <button onClick={() => onDelete(item._id)} className="text-red-600 hover:underline">Delete</button>
-                 )}
-              </td>
+              
+              {/* ONLY render this Cell if 'actions' prop is passed */}
+              {actions && (
+                <td className="p-4 text-center">
+                  {actions(row)}
+                </td>
+              )}
             </tr>
           ))}
+
+          {/* Empty State */}
+          {data.length === 0 && (
+            <tr>
+              <td 
+                colSpan={columns.length + (actions ? 1 : 0)} 
+                className="p-8 text-center text-gray-500 italic"
+              >
+                No records found.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
