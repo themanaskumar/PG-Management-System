@@ -3,18 +3,28 @@ import api from '../utils/axiosInstance';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
+// Constants for Dropdowns
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+const YEARS = [2024, 2025, 2026];
+
 const AdminDashboard = () => {
   const { logout, user } = useAuth();
   const [activeView, setActiveView] = useState('menu'); // 'menu', 'rent', 'complaint', 'tenant'
   
   // --- Data States ---
-  const [rents, setRents] = useState([]);
   const [complaints, setComplaints] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [rooms, setRooms] = useState([]);
 
-  // --- Filter States ---
-  const [rentFilter, setRentFilter] = useState('All');
+  // --- Rent Tracking Specific States ---
+  const [trackMonth, setTrackMonth] = useState(MONTHS[new Date().getMonth()]); // Default current month
+  const [trackYear, setTrackYear] = useState(new Date().getFullYear());       // Default current year
+  const [trackingData, setTrackingData] = useState([]);                       // Merged data from backend
+
+  // --- Filter States (Other Views) ---
   const [compFilter, setCompFilter] = useState('All');
 
   // --- Form State ---
@@ -24,19 +34,36 @@ const AdminDashboard = () => {
 
   // --- Fetch Data Effects ---
   useEffect(() => {
-    if (activeView === 'rent') fetchRents();
+    if (activeView === 'rent') fetchTrackedRents();
     if (activeView === 'complaint') fetchComplaints();
     if (activeView === 'tenant') { fetchTenants(); fetchRooms(); }
-  }, [activeView]);
+  }, [activeView, trackMonth, trackYear]); // Refetch rent when month/year changes
 
-  const fetchRents = async () => { try { const { data } = await api.get('/rent'); setRents(data); } catch(e){} };
+  // --- API Calls ---
+  const fetchTrackedRents = async () => {
+    try {
+      // Calls the new tracking endpoint
+      const { data } = await api.get(`/rent/track?month=${trackMonth}&year=${trackYear}`);
+      setTrackingData(data);
+    } catch (e) {
+      console.error(e);
+      // toast.error('Failed to load rent status'); // Optional: comment out to avoid spam on load
+    }
+  };
+
   const fetchComplaints = async () => { try { const { data } = await api.get('/complaints'); setComplaints(data); } catch(e){} };
   const fetchTenants = async () => { try { const { data } = await api.get('/admin/tenants'); setTenants(data); } catch(e){} };
   const fetchRooms = async () => { try { const { data } = await api.get('/admin/rooms'); setRooms(data); } catch(e){} };
 
   // --- Actions ---
   const handleRentAction = async (id, status) => {
-    try { await api.put(`/rent/${id}`, { status }); toast.success(`Rent ${status}`); fetchRents(); } catch (e) { toast.error('Failed'); }
+    try { 
+      await api.put(`/rent/${id}`, { status }); 
+      toast.success(`Rent ${status}`); 
+      fetchTrackedRents(); // Refresh the list to show updated status
+    } catch (e) { 
+      toast.error('Failed to update status'); 
+    }
   };
 
   const handleComplaintResolve = async (id) => {
@@ -61,7 +88,6 @@ const AdminDashboard = () => {
   };
 
   // --- Filter Logic ---
-  const filteredRents = rents.filter(r => rentFilter === 'All' ? true : r.status === rentFilter);
   const filteredComplaints = complaints.filter(c => compFilter === 'All' ? true : c.status === compFilter);
 
   // --- UI Components ---
@@ -97,44 +123,134 @@ const AdminDashboard = () => {
         {/* --- MENU VIEW --- */}
         {activeView === 'menu' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <MenuCard title="Rent Tracking" desc="View payment proofs and approve status" color="bg-blue-600" view="rent" />
+            <MenuCard title="Rent Tracking" desc="Track monthly payments for all tenants" color="bg-blue-600" view="rent" />
             <MenuCard title="Complaints" desc="Track issues and mark them resolved" color="bg-orange-500" view="complaint" />
             <MenuCard title="Tenant Management" desc="Add/Remove tenants & View Room Status" color="bg-green-600" view="tenant" />
           </div>
         )}
 
-        {/* --- RENT VIEW --- */}
+        {/* --- RENT TRACKING VIEW (UPDATED) --- */}
         {activeView === 'rent' && (
           <div className="bg-white rounded-xl shadow p-6">
-            <div className="flex justify-between items-center mb-6">
-               <h3 className="text-xl font-bold text-gray-700">Rent Approvals</h3>
-               <div className="flex items-center gap-2">
-                 <span className="text-sm text-gray-500">Filter:</span>
-                 <select className="border p-2 rounded text-sm bg-gray-50" value={rentFilter} onChange={e => setRentFilter(e.target.value)}>
-                   <option value="All">All Status</option>
-                   <option value="Pending">Pending</option>
-                   <option value="Approved">Approved</option>
-                   <option value="Rejected">Rejected</option>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+               <div>
+                 <h3 className="text-xl font-bold text-gray-700">Monthly Rent Tracker</h3>
+                 <p className="text-sm text-gray-500">Showing payment status for <strong>{trackMonth} {trackYear}</strong></p>
+               </div>
+
+               {/* Month/Year Filters */}
+               <div className="flex gap-3">
+                 <select 
+                   value={trackMonth} 
+                   onChange={(e) => setTrackMonth(e.target.value)}
+                   className="border p-2 rounded-lg bg-gray-50 font-medium focus:ring-2 focus:ring-blue-500"
+                 >
+                   {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                 </select>
+
+                 <select 
+                   value={trackYear} 
+                   onChange={(e) => setTrackYear(parseInt(e.target.value))}
+                   className="border p-2 rounded-lg bg-gray-50 font-medium focus:ring-2 focus:ring-blue-500"
+                 >
+                   {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                  </select>
                </div>
             </div>
+
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead><tr className="border-b bg-gray-50 text-gray-600 uppercase text-xs"><th className="p-4">Tenant</th><th className="p-4">Period</th><th className="p-4">Amount</th><th className="p-4">Proof</th><th className="p-4">Status</th><th className="p-4">Action</th></tr></thead>
-                <tbody>
-                  {filteredRents.map(r => (
-                    <tr key={r._id} className="border-b hover:bg-gray-50 transition">
-                      <td className="p-4 font-medium">{r.user?.name} <span className="text-gray-400 text-xs">(Rm: {r.user?.roomNo})</span></td>
-                      <td className="p-4">{r.month} {r.year}</td>
-                      <td className="p-4 font-mono">₹{r.amount}</td>
-                      <td className="p-4"><a href={r.proofUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">View Proof</a></td>
-                      <td className={`p-4 font-bold ${r.status==='Approved'?'text-green-600':r.status==='Rejected'?'text-red-600':'text-yellow-600'}`}>{r.status}</td>
-                      <td className="p-4 flex gap-2">
-                        {r.status === 'Pending' && <><button onClick={()=>handleRentAction(r._id, 'Approved')} className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm hover:bg-green-200">Approve</button><button onClick={()=>handleRentAction(r._id, 'Rejected')} className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm hover:bg-red-200">Reject</button></>}
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b bg-gray-100 text-gray-600 uppercase text-xs">
+                    <th className="p-4 rounded-tl-lg">Tenant</th>
+                    <th className="p-4">Room</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Amount</th>
+                    <th className="p-4">Proof</th>
+                    <th className="p-4 rounded-tr-lg">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {trackingData.map((record) => (
+                    <tr key={record.tenantId} className="hover:bg-blue-50 transition duration-150">
+                      
+                      {/* Tenant Name & Phone */}
+                      <td className="p-4">
+                        <div className="font-bold text-gray-800">{record.name}</div>
+                        <div className="text-xs text-gray-500">{record.phone}</div>
+                      </td>
+
+                      {/* Room Number */}
+                      <td className="p-4 font-mono font-semibold text-gray-600">
+                        {record.roomNo || "N/A"}
+                      </td>
+
+                      {/* Status Badge */}
+                      <td className="p-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                          record.status === 'Approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                          record.status === 'Pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                          record.status === 'Rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                          'bg-gray-100 text-gray-500 border-gray-200' // For 'Not Paid'
+                        }`}>
+                          {record.status}
+                        </span>
+                      </td>
+
+                      {/* Amount */}
+                      <td className="p-4 font-medium">
+                        {record.amount > 0 ? `₹${record.amount}` : '-'}
+                      </td>
+
+                      {/* Proof Link */}
+                      <td className="p-4">
+                        {record.proofUrl ? (
+                          <a href={record.proofUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-medium flex items-center gap-1">
+                            <span>View Proof</span>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                          </a>
+                        ) : (
+                          <span className="text-gray-400 text-sm italic">No Submission</span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="p-4">
+                        {record.status === 'Pending' && (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleRentAction(record.rentId, 'Approved')} 
+                              className="bg-green-500 text-white p-1.5 rounded hover:bg-green-600 shadow-sm"
+                              title="Approve"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                            </button>
+                            <button 
+                              onClick={() => handleRentAction(record.rentId, 'Rejected')} 
+                              className="bg-red-500 text-white p-1.5 rounded hover:bg-red-600 shadow-sm"
+                              title="Reject"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                          </div>
+                        )}
+                        {record.status === 'Not Paid' && (
+                           <span className="text-xs text-red-400 font-medium">Due</span>
+                        )}
+                        {record.status === 'Approved' && (
+                           <span className="text-xs text-green-600 font-medium">Completed</span>
+                        )}
                       </td>
                     </tr>
                   ))}
-                  {filteredRents.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-gray-400">No rent records found.</td></tr>}
+                  
+                  {trackingData.length === 0 && (
+                    <tr>
+                      <td colSpan="6" className="p-8 text-center text-gray-400 italic">
+                        No active tenants found.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -225,8 +341,6 @@ const AdminDashboard = () => {
                       <div className={`text-xl font-extrabold ${r.status === 'Vacant' ? 'text-green-700' : 'text-red-700'}`}>
                         {r.roomNo}
                       </div>
-                      
-                      {/* Displays Tenant Name or 'Vacant' */}
                       <div className="text-xs mt-1 font-medium truncate w-full px-1">
                         {r.status === 'Vacant' ? (
                            <span className="text-green-600 italic">Vacant</span>

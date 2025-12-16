@@ -12,7 +12,8 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(express.json()); // Body parser
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 
 // Routes (We will create these files in Batch 3)
