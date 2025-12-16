@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom'; // Removed 'Link' import
 import api from '../utils/axiosInstance';
 import toast from 'react-hot-toast';
 
@@ -23,25 +23,41 @@ const Login = () => {
   };
 
   return (
-    <div className="flex items-center justify-center h-screen bg-blue-50">
-      <form onSubmit={handleSubmit} className="p-8 bg-white rounded shadow-md w-96">
-        <h2 className="mb-6 text-2xl font-bold text-center text-blue-600">Nair PG Login</h2>
-        <input 
-          className="w-full p-2 mb-4 border rounded" 
-          placeholder="Email" 
-          value={email} 
-          onChange={(e) => setEmail(e.target.value)} 
-        />
-        <input 
-          className="w-full p-2 mb-6 border rounded" 
-          type="password" 
-          placeholder="Password" 
-          value={password} 
-          onChange={(e) => setPassword(e.target.value)} 
-        />
-        <button className="w-full p-2 text-white bg-blue-600 rounded hover:bg-blue-700">Login</button>
-        <p className="mt-4 text-center text-sm">
-          Don't have an account? <Link to="/signup" className="text-blue-500">Sign up</Link>
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <form onSubmit={handleSubmit} className="p-8 bg-white rounded-xl shadow-lg w-96 border border-gray-100">
+        <h2 className="mb-2 text-2xl font-bold text-center text-blue-800">Welcome Back</h2>
+        <p className="mb-8 text-center text-gray-500 text-sm">PG Management Portal</p>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <input 
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+              placeholder="admin@pg.com" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input 
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+              type="password" 
+              placeholder="••••••••" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+            />
+          </div>
+        </div>
+
+        <button className="w-full mt-6 p-3 text-white bg-blue-600 rounded-lg hover:bg-blue-700 font-bold transition-colors shadow-md">
+          Login
+        </button>
+        
+        {/* Sign Up Link REMOVED */}
+        <p className="mt-4 text-center text-xs text-gray-400">
+          Contact Admin for credentials.
         </p>
       </form>
     </div>

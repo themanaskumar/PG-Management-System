@@ -1,10 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import Login from './pages/Login';
-import Signup from './Pages/Signup.jsx';
-import AdminDashboard from './pages/AdminDashboard';
-import TenantDashboard from './pages/TenantDashboard';
-import PrivateRoute from './components/PrivateRoute'; // Ensure this matches your folder
+import Login from './Pages/Login';
+// import Signup from './pages/Signup';  <-- DELETED THIS LINE
+import AdminDashboard from './Pages/AdminDashboard';
+import TenantDashboard from './Pages/TenantDashboard';
+import PrivateRoute from './components/PrivateRoute';
 import { useAuth } from './context/AuthContext';
 
 const HomeRedirect = () => {
@@ -19,7 +19,6 @@ function App() {
       <Toaster position="top-right" />
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
         
         {/* Redirect root based on role */}
         <Route path="/" element={<HomeRedirect />} />
@@ -37,6 +36,9 @@ function App() {
             <AdminDashboard />
           </PrivateRoute>
         } />
+        
+        {/* Catch-all: Redirect unknown routes to login */}
+        <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </div>
   );
