@@ -15,23 +15,27 @@ router.post('/signup', async (req, res) => {
 
   // 2. Check Room Availability (Skip check if creating an Admin)
   if (!isAdmin) {
-    const room = await Room.findOne({ roomNo });
-    if (!room) {
-      return res.status(400).json({ message: `Room ${roomNo} does not exist.` });
-    }
-    if (room.status === 'Occupied') {
-      return res.status(400).json({ message: `Room ${roomNo} is already occupied.` });
-    }
-    
-    // Mark Room as Occupied
-    room.status = 'Occupied';
-    await room.save();
+  const room = await Room.findOne({ roomNo });
+  if (!room) {
+    return res.status(400).json({ message: `Room ${roomNo} does not exist.` });
   }
+  if (room.status === 'Occupied') {
+    return res.status(400).json({ message: `Room ${roomNo} is already occupied.` });
+  }
+}
 
-  // 3. Create User
-  const user = await User.create({ 
-    name, email, password, phone, roomNo, idType, idNumber, deposit, isAdmin 
-  });
+// 3. Create User
+const user = await User.create({ 
+  name, email, password, phone, roomNo, idType, idNumber, deposit, isAdmin 
+});
+
+// 4. UPDATE ROOM WITH USER ID (New Logic)
+if (!isAdmin && user) {
+  await Room.findOneAndUpdate(
+    { roomNo },
+    { status: 'Occupied', currentTenant: user._id }
+  );
+}
 
   if (user) {
     res.status(201).json({
