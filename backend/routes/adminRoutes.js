@@ -44,7 +44,7 @@ router.post('/seed-rooms', async (req, res) => {
 
 // GET /api/admin/rooms - View Room Status
 router.get('/rooms', protect, admin, async (req, res) => {
-  const rooms = await Room.find({}).sort({ roomNo: 1 });
+  const rooms = await Room.find({}).sort({ roomNo: 1 }).populate('currentTenant', 'name');
   res.json(rooms);
 });
 
