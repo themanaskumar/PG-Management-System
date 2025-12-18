@@ -1,7 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const connectDB = require('./config/db'); // Ensure you dragged db.js here
+const connectDB = require('./config/db');
+const generateMonthlyBills = require('./utils/billGenerator');
 
 // Load Config
 dotenv.config();
@@ -18,9 +19,12 @@ app.use(cors());
 
 // Routes (We will create these files in Batch 3)
 app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/rent', require('./routes/rentRoutes'));
+app.use('/api/rent', require('./routes/rentroutes'));
 app.use('/api/complaints', require('./routes/complaintRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/payment', require('./routes/paymentRoutes'));
+
+generateMonthlyBills();
 
 app.get('/', (req, res) => res.send('API is running...'));
 

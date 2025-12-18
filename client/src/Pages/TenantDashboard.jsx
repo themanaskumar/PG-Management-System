@@ -4,242 +4,217 @@ import DataTable from '../components/DataTable';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
-// Helper for Dropdowns
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
+// Constants
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+
+// Razorpay Loader
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
 
 const TenantDashboard = () => {
   const { user, logout } = useAuth();
+  
+  // Data States
   const [rents, setRents] = useState([]);
   const [complaints, setComplaints] = useState([]);
+  const [bills, setBills] = useState([]); 
   const [activeTab, setActiveTab] = useState('rent');
 
-  // FILTERS
+  // Filters
   const [rentFilter, setRentFilter] = useState('All');
   const [compFilter, setCompFilter] = useState('All');
 
-  // FORM STATES
-  // Defaulting to current Month and Year
-  const [rentData, setRentData] = useState({ 
-    month: MONTHS[new Date().getMonth()], 
-    year: new Date().getFullYear(), 
-    amount: '', 
-    proofUrl: '' 
-  });
-  
-  const [compData, setCompData] = useState({ title: '', description: '' });
+  // Form States
+  const [rentData, setRentData] = useState({ month: MONTHS[new Date().getMonth()], year: new Date().getFullYear(), amount: '' });
+  const [rentFile, setRentFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
 
+  const [compData, setCompData] = useState({ roomNo: user?.roomNo || '', description: '' });
+  const [compFile, setCompFile] = useState(null);
+
+  // --- API CALLS ---
   const fetchData = async () => {
     try {
-      const rentRes = await api.get('/rent');
-      const compRes = await api.get('/complaints');
+      const [rentRes, compRes, billRes] = await Promise.all([
+        api.get('/rent'),
+        api.get('/complaints'),
+        api.get('/rent/my-bills')
+      ]);
       setRents(rentRes.data);
       setComplaints(compRes.data);
-    } catch (err) { toast.error('Failed to load data'); }
+      setBills(billRes.data);
+    } catch (err) { console.error(err); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- IMAGE HANDLER ---
-  const handleImageUpload = (e) => {
+  // --- HANDLERS ---
+  const handleFileChange = (e, setFile, setPreview = null) => {
     const file = e.target.files[0];
-    if (!file) return;
-    
-    // Simple 2MB Limit
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image too large. Max 2MB.");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onloadend = () => {
-      setRentData({ ...rentData, proofUrl: reader.result });
-      toast.success("Image uploaded successfully!");
-    };
+    if (file && file.size > 5 * 1024 * 1024) return toast.error("Max 5MB allowed");
+    setFile(file);
+    if (setPreview) setPreview(URL.createObjectURL(file));
   };
 
   const handleRentSubmit = async (e) => {
     e.preventDefault();
-    if (!rentData.proofUrl) return toast.error("Please upload payment proof");
+    if (!rentFile) return toast.error("Upload proof required");
     
+    const formData = new FormData();
+    formData.append('month', rentData.month);
+    formData.append('year', rentData.year);
+    formData.append('amount', rentData.amount);
+    formData.append('image', rentFile); 
+
     try { 
-      await api.post('/rent', rentData); 
+      await api.post('/rent', formData); 
       toast.success('Submitted!'); 
       fetchData(); 
-      // Reset form but keep month/year logic or reset to current? 
-      // Keeping it simple: clear amount and proof
-      setRentData(prev => ({ ...prev, amount: '', proofUrl: '' }));
-    } catch (err) { 
-      toast.error('Failed'); 
-    }
+      setRentData(prev => ({ ...prev, amount: '' }));
+      setRentFile(null); setPreviewUrl(null);
+    } catch (err) { toast.error('Upload failed'); }
   };
 
   const handleComplaintSubmit = async (e) => {
     e.preventDefault();
+    const formData = new FormData();
+    formData.append('roomNo', compData.roomNo);
+    formData.append('description', compData.description);
+    if (compFile) formData.append('image', compFile);
+
     try { 
-      await api.post('/complaints', compData); 
-      toast.success('Lodged!'); 
+      await api.post('/complaints', formData); 
+      toast.success('Complaint Lodged'); 
       fetchData(); 
-      setCompData({ title: '', description: '' });
-    } catch (err) { 
-      toast.error('Failed'); 
-    }
+      setCompData({ roomNo: user?.roomNo || '', description: '' });
+      setCompFile(null);
+    } catch (err) { toast.error('Failed'); }
   };
 
-  const filteredRents = rents.filter(r => rentFilter === 'All' ? true : r.status === rentFilter);
-  const filteredComplaints = complaints.filter(c => compFilter === 'All' ? true : c.status === compFilter);
+  const handlePayBill = async (bill) => {
+    const isLoaded = await loadRazorpayScript();
+    if (!isLoaded) return toast.error('Razorpay SDK failed');
 
-  const rentColumns = [{ key: 'month', label: 'Month' }, { key: 'year', label: 'Year' }, { key: 'amount', label: 'Amount' }, { key: 'status', label: 'Status' }];
-  const compColumns = [{ key: 'title', label: 'Issue' }, { key: 'status', label: 'Status' }, { key: 'createdAt', label: 'Date' }];
+    try {
+      const { data: order } = await api.post('/payment/create-order', { billId: bill._id });
+      const options = {
+        key: "YOUR_RAZORPAY_KEY_ID_HERE", // <--- PASTE YOUR KEY HERE
+        amount: order.amount,
+        currency: order.currency,
+        name: "PG Management",
+        description: `Rent for ${bill.month}`,
+        order_id: order.orderId,
+        handler: async function (response) {
+          try {
+            await api.post('/payment/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              billId: bill._id
+            });
+            toast.success('Payment Successful!');
+            fetchData(); 
+          } catch (error) { toast.error('Verification Failed'); }
+        },
+        prefill: { name: order.user_name, email: order.user_email, contact: order.user_phone },
+        theme: { color: "#2563EB" },
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) { toast.error('Payment failed'); }
+  };
+
+  // --- COLUMNS (Using the new 'render' feature) ---
+  const rentColumns = [
+    { key: 'month', label: 'Month' }, 
+    { key: 'amount', label: 'Amount' },
+    { key: 'proofUrl', label: 'Proof', render: (row) => (
+       row.proofUrl && !row.proofUrl.includes('Razorpay') ? 
+       <a href={row.proofUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline text-xs">View</a> : 
+       <span className="text-gray-400 text-xs">{row.proofUrl?.includes('Razorpay') ? 'Online' : '-'}</span>
+    )},
+    { key: 'status', label: 'Status' }
+  ];
+
+  const compColumns = [
+    { key: 'roomNo', label: 'Room' }, 
+    { key: 'description', label: 'Description' }, 
+    { key: 'imageUrl', label: 'Photo', render: (row) => (
+       row.imageUrl ? 
+       <a href={row.imageUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline text-xs flex items-center gap-1">
+         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> View
+       </a> : <span className="text-gray-400 text-xs italic">No Image</span>
+    )},
+    { key: 'status', label: 'Status' },
+    { key: 'createdAt', label: 'Date', render: (row) => new Date(row.createdAt).toLocaleDateString() }
+  ];
 
   return (
     <div className="p-8 max-w-6xl mx-auto min-h-screen bg-gray-50">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-blue-800">Welcome, {user?.name}</h1>
+        <div><h1 className="text-3xl font-bold text-blue-800">Welcome, {user?.name}</h1><p className="text-gray-500 text-sm">Room: {user?.roomNo || 'N/A'}</p></div>
         <button onClick={logout} className="bg-red-500 text-white px-4 py-2 rounded shadow hover:bg-red-600">Logout</button>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        <button onClick={() => setActiveTab('rent')} className={`px-4 py-2 rounded font-medium transition ${activeTab === 'rent' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}>My Rents</button>
-        <button onClick={() => setActiveTab('complaint')} className={`px-4 py-2 rounded font-medium transition ${activeTab === 'complaint' ? 'bg-blue-600 text-white shadow' : 'bg-white text-gray-600'}`}>My Complaints</button>
+      {/* DUES SECTION */}
+      <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {bills.filter(b => b.status === 'Unpaid').map(bill => (
+          <div key={bill._id} className="bg-white border-l-4 border-red-500 p-4 rounded shadow flex justify-between items-center">
+            <div><p className="font-bold">{bill.month}</p><p className="text-red-600 text-sm">₹{bill.amount}</p></div>
+            <button onClick={() => handlePayBill(bill)} className="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700">Pay Now</button>
+          </div>
+        ))}
+        {bills.filter(b => b.status === 'Unpaid').length === 0 && <div className="bg-green-50 text-green-700 p-4 rounded border-l-4 border-green-500">All caught up! No pending dues.</div>}
+      </div>
+
+      {/* TABS */}
+      <div className="flex gap-4 mb-6 border-b pb-1">
+        <button onClick={() => setActiveTab('rent')} className={`px-4 py-2 ${activeTab === 'rent' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Rents</button>
+        <button onClick={() => setActiveTab('complaint')} className={`px-4 py-2 ${activeTab === 'complaint' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Complaints</button>
       </div>
 
       {activeTab === 'rent' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Form */}
-          <div className="md:col-span-1 bg-white p-6 rounded-xl shadow-sm border h-fit">
-            <h3 className="text-xl font-bold mb-4 text-gray-700">Submit Rent Proof</h3>
-            <form onSubmit={handleRentSubmit} className="flex flex-col gap-4">
-              
-              {/* --- UPDATED: Month & Year Selection --- */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs text-gray-500 font-semibold ml-1">Month</label>
-                  <select 
-                    className="border p-2 rounded w-full bg-gray-50" 
-                    value={rentData.month} 
-                    onChange={e => setRentData({...rentData, month: e.target.value})}
-                  >
-                    {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 font-semibold ml-1">Year</label>
-                  <select 
-                    className="border p-2 rounded w-full bg-gray-50" 
-                    value={rentData.year} 
-                    onChange={e => setRentData({...rentData, year: e.target.value})}
-                  >
-                    {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                 <label className="text-xs text-gray-500 font-semibold ml-1">Amount Paid (₹)</label>
-                 <input 
-                   type="number" 
-                   placeholder="5000" 
-                   className="border p-2 rounded w-full" 
-                   value={rentData.amount}
-                   onChange={e => setRentData({...rentData, amount: e.target.value})} 
-                   required 
-                 />
-              </div>
-              
-              {/* File Input */}
-              <div className="border p-2 rounded bg-gray-50 border-dashed border-gray-300">
-                <label className="block text-xs text-gray-500 mb-1 font-semibold">Upload Screenshot</label>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageUpload} 
-                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                  required={!rentData.proofUrl} // Required only if no proofUrl exists
-                />
-              </div>
-
-              {/* PREVIEW IMAGE */}
-              {rentData.proofUrl && (
-                <div className="mt-2 bg-gray-100 p-2 rounded border text-center">
-                  <p className="text-xs text-green-600 mb-1 font-bold">Preview:</p>
-                  <img src={rentData.proofUrl} alt="Proof" className="h-32 mx-auto object-contain rounded" />
-                </div>
-              )}
-
-              <button className="bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition shadow-md">Submit Payment</button>
+          <div className="bg-white p-6 rounded shadow h-fit">
+            <h3 className="font-bold mb-4">Manual Upload</h3>
+            <form onSubmit={handleRentSubmit} className="flex flex-col gap-3">
+              <select className="border p-2 rounded" value={rentData.month} onChange={e => setRentData({...rentData, month: e.target.value})}>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select>
+              <input type="number" placeholder="Amount" className="border p-2 rounded" value={rentData.amount} onChange={e => setRentData({...rentData, amount: e.target.value})} required />
+              <input type="file" onChange={(e) => handleFileChange(e, setRentFile, setPreviewUrl)} className="text-sm" required />
+              {previewUrl && <img src={previewUrl} alt="Preview" className="h-20 object-contain" />}
+              <button className="bg-green-600 text-white py-2 rounded">Submit</button>
             </form>
           </div>
-
-          {/* Table */}
-          <div className="md:col-span-2 space-y-4">
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border">
-               <h3 className="font-bold text-gray-700">Payment History</h3>
-               <select className="border p-1 rounded text-sm bg-gray-50" value={rentFilter} onChange={e => setRentFilter(e.target.value)}>
-                 <option value="All">All Status</option>
-                 <option value="Pending">Pending</option>
-                 <option value="Approved">Approved</option>
-                 <option value="Rejected">Rejected</option>
-               </select>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-               <DataTable columns={rentColumns} data={filteredRents} />
-            </div>
+          <div className="md:col-span-2 bg-white rounded shadow overflow-hidden">
+             <DataTable columns={rentColumns} data={rents.filter(r => rentFilter === 'All' ? true : r.status === rentFilter)} />
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Complaint Form */}
-          <div className="md:col-span-1 bg-white p-6 rounded-xl shadow-sm border h-fit">
-            <h3 className="text-xl font-bold mb-4 text-gray-700">Lodge Complaint</h3>
-            <form onSubmit={handleComplaintSubmit} className="flex flex-col gap-4">
-              <div>
-                <label className="text-xs text-gray-500 font-semibold ml-1">Subject</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g., Leaking Tap" 
-                  className="border p-2 rounded w-full" 
-                  value={compData.title}
-                  onChange={e => setCompData({...compData, title: e.target.value})} 
-                  required 
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-semibold ml-1">Description</label>
-                <textarea 
-                  placeholder="Describe the issue..." 
-                  className="border p-2 rounded w-full h-32 resize-none" 
-                  value={compData.description}
-                  onChange={e => setCompData({...compData, description: e.target.value})} 
-                  required 
-                />
-              </div>
-              <button className="bg-orange-600 text-white py-3 rounded-lg font-bold hover:bg-orange-700 transition shadow-md">Lodge Complaint</button>
+          <div className="bg-white p-6 rounded shadow h-fit">
+            <h3 className="font-bold mb-4">Lodge Complaint</h3>
+            <form onSubmit={handleComplaintSubmit} className="flex flex-col gap-3">
+              <input placeholder="Room / Area" className="border p-2 rounded" value={compData.roomNo} onChange={e => setCompData({...compData, roomNo: e.target.value})} required />
+              <textarea placeholder="Description" className="border p-2 rounded h-24" value={compData.description} onChange={e => setCompData({...compData, description: e.target.value})} required />
+              <div className="text-xs text-gray-500">Optional Photo:</div>
+              <input type="file" onChange={(e) => handleFileChange(e, setCompFile)} className="text-sm" />
+              <button className="bg-orange-600 text-white py-2 rounded">Submit</button>
             </form>
           </div>
-
-          {/* Table */}
-          <div className="md:col-span-2 space-y-4">
-             <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border">
-               <h3 className="font-bold text-gray-700">Complaint History</h3>
-               <select className="border p-1 rounded text-sm bg-gray-50" value={compFilter} onChange={e => setCompFilter(e.target.value)}>
-                 <option value="All">All Status</option>
-                 <option value="Open">Open</option>
-                 <option value="Resolved">Resolved</option>
-               </select>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-               <DataTable columns={compColumns} data={filteredComplaints} />
-            </div>
+          <div className="md:col-span-2 bg-white rounded shadow overflow-hidden">
+             <DataTable columns={compColumns} data={complaints.filter(c => compFilter === 'All' ? true : c.status === compFilter)} />
           </div>
         </div>
       )}
     </div>
   );
 };
-
 export default TenantDashboard;

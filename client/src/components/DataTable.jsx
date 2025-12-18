@@ -11,7 +11,6 @@ const DataTable = ({ columns, data, actions }) => {
                 {col.label}
               </th>
             ))}
-            {/* ONLY render this Header if 'actions' prop is passed */}
             {actions && <th className="p-4 border-b text-center">Actions</th>}
           </tr>
         </thead>
@@ -20,12 +19,18 @@ const DataTable = ({ columns, data, actions }) => {
             <tr key={index} className="hover:bg-gray-50 transition duration-150">
               {columns.map((col) => (
                 <td key={col.key} className="p-4 text-gray-700">
-                  {/* Handle missing data gracefully */}
-                  {row[col.key] !== undefined && row[col.key] !== null ? row[col.key] : '-'}
+                  {/* Updated Logic:
+                     If the column has a custom 'render' function, use it.
+                     Otherwise, just display the text as before.
+                  */}
+                  {col.render ? (
+                    col.render(row)
+                  ) : (
+                    row[col.key] !== undefined && row[col.key] !== null ? row[col.key] : '-'
+                  )}
                 </td>
               ))}
               
-              {/* ONLY render this Cell if 'actions' prop is passed */}
               {actions && (
                 <td className="p-4 text-center">
                   {actions(row)}
@@ -34,7 +39,6 @@ const DataTable = ({ columns, data, actions }) => {
             </tr>
           ))}
 
-          {/* Empty State */}
           {data.length === 0 && (
             <tr>
               <td 

@@ -16,12 +16,3 @@ const PrivateRoute = ({ children, adminOnly = false }) => {
 };
 
 export default PrivateRoute;
-
-/*
-In your App.jsx routes:
-
-
-<Route path="/admin" element={
-    <PrivateRoute adminOnly={true}><AdminDashboard /></PrivateRoute>
-} />
-*/

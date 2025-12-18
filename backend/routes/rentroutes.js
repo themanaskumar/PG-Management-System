@@ -3,6 +3,8 @@ const router = express.Router();
 const Rent = require('../models/Rent');
 const User = require('../models/User'); 
 const { protect, admin } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware'); // Import the new middleware
+const Bill = require('../models/Bill');
 
 // Helper to convert Month Name to Index (0-11)
 const getMonthIndex = (monthName) => {
@@ -71,18 +73,32 @@ router.get('/track', protect, admin, async (req, res) => {
 // --- Standard CRUD Routes ---
 
 // POST /api/rent (Tenant: Submit Proof)
-router.post('/', protect, async (req, res) => {
-  const { month, year, amount, proofUrl } = req.body;
+
+// POST /api/rent (Tenant: Submit Proof)
+// Notice the middleware: upload.single('image')
+router.post('/', protect, upload.single('image'), async (req, res) => {
   try {
+    const { month, year, amount } = req.body;
+    
+    // Multer/Cloudinary puts the URL in req.file.path
+    // If no file was uploaded, we might want to handle that (though frontend makes it required)
+    const proofUrl = req.file ? req.file.path : null; 
+
+    if (!proofUrl) {
+      return res.status(400).json({ message: 'Proof image is required' });
+    }
+
     const rent = await Rent.create({
       user: req.user._id,
       month, 
       year, 
       amount, 
-      proofUrl
+      proofUrl // Stores the Cloudinary URL (e.g., https://res.cloudinary.com/...)
     });
+
     res.status(201).json(rent);
   } catch (error) {
+    console.error(error);
     res.status(400).json({ message: 'Failed to submit rent' });
   }
 });
@@ -111,6 +127,17 @@ router.put('/:id', protect, admin, async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ message: 'Update failed' });
+  }
+});
+
+// GET /api/rent/my-bills
+router.get('/my-bills', protect, async (req, res) => {
+  try {
+    // Fetch unpaid bills first
+    const bills = await Bill.find({ user: req.user._id }).sort({ status: -1, createdAt: -1 });
+    res.json(bills);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching bills' });
   }
 });
 
