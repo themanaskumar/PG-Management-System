@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 
 // Constants
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const YEARS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
 
 // Razorpay Loader
 const loadRazorpayScript = () => {
@@ -106,7 +105,7 @@ const TenantDashboard = () => {
     try {
       const { data: order } = await api.post('/payment/create-order', { billId: bill._id });
       const options = {
-        key: "YOUR_RAZORPAY_KEY_ID_HERE", // <--- PASTE YOUR KEY HERE
+        key: "rzp_test_Rt5hXjTL2tKiN8", 
         amount: order.amount,
         currency: order.currency,
         name: "PG Management",
@@ -132,7 +131,7 @@ const TenantDashboard = () => {
     } catch (err) { toast.error('Payment failed'); }
   };
 
-  // --- COLUMNS (Using the new 'render' feature) ---
+  // --- COLUMNS ---
   const rentColumns = [
     { key: 'month', label: 'Month' }, 
     { key: 'amount', label: 'Amount' },
@@ -159,9 +158,24 @@ const TenantDashboard = () => {
 
   return (
     <div className="p-8 max-w-6xl mx-auto min-h-screen bg-gray-50">
-      <div className="flex justify-between items-center mb-8">
-        <div><h1 className="text-3xl font-bold text-blue-800">Welcome, {user?.name}</h1><p className="text-gray-500 text-sm">Room: {user?.roomNo || 'N/A'}</p></div>
-        <button onClick={logout} className="bg-red-500 text-white px-4 py-2 rounded shadow hover:bg-red-600">Logout</button>
+      
+      {/* --- HEADER WITH PROFILE PIC --- */}
+      <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-sm">
+        <div className="flex items-center gap-5">
+           {/* Profile Picture */}
+           <img 
+             src={user?.profilePhoto || "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg"} 
+             alt="Profile" 
+             className="w-16 h-16 rounded-full object-cover border-2 border-blue-100 shadow-sm"
+           />
+           <div>
+             <h1 className="text-2xl font-bold text-gray-800">Welcome, {user?.name}</h1>
+             <p className="text-gray-500 text-sm">Room No: <span className="font-mono font-bold text-blue-600">{user?.roomNo || 'N/A'}</span></p>
+           </div>
+        </div>
+        <button onClick={logout} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-100 transition shadow-sm">
+          Logout
+        </button>
       </div>
 
       {/* DUES SECTION */}
@@ -181,6 +195,7 @@ const TenantDashboard = () => {
         <button onClick={() => setActiveTab('complaint')} className={`px-4 py-2 ${activeTab === 'complaint' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Complaints</button>
       </div>
 
+      {/* RENT CONTENT */}
       {activeTab === 'rent' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-white p-6 rounded shadow h-fit">
@@ -198,6 +213,7 @@ const TenantDashboard = () => {
           </div>
         </div>
       ) : (
+        // COMPLAINT CONTENT
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-white p-6 rounded shadow h-fit">
             <h3 className="font-bold mb-4">Lodge Complaint</h3>

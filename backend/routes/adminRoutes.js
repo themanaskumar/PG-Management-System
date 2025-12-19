@@ -1,51 +1,30 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
-const Room = require('../models/Room');
 const { protect, admin } = require('../middleware/authMiddleware');
-const generateToken = require('../utils/generateToken'); // Reuse token gen if you want auto-login, or just ignore
+const upload = require('../middleware/uploadMiddleware'); // Ensure this points to your multer config
+const { 
+  createTenant, 
+  getAllTenants, 
+  deleteTenant, 
+  getAllRooms, 
+  seedRooms 
+} = require('../controllers/adminController');
 
-// GET /api/admin/tenants - View All Tenants
-router.get('/tenants', protect, admin, async (req, res) => {
-  const tenants = await User.find({ isAdmin: false }).select('-password');
-  res.json(tenants);
-});
+// Configuration for uploading multiple files
+const tenantUploads = upload.fields([
+  { name: 'profilePhoto', maxCount: 1 },
+  { name: 'idProof', maxCount: 1 }
+]);
 
-// DELETE /api/admin/tenants/:id - Remove Tenant & Free Room
-router.delete('/tenants/:id', protect, admin, async (req, res) => {
-  const user = await User.findById(req.params.id);
-  if (user) {
-    // Free up the room
-    const room = await Room.findOne({ roomNo: user.roomNo });
-    if (room) {
-      room.status = 'Vacant';
-      await room.save();
-    }
-    await User.findByIdAndDelete(req.params.id); // Delete user
-    res.json({ message: 'Tenant removed and room freed' });
-  } else {
-    res.status(404).json({ message: 'User not found' });
-  }
-});
+// --- ROUTES ---
 
-// POST /api/admin/seed-rooms - One time setup
-router.post('/seed-rooms', async (req, res) => {
-  const rooms = [];
-  // 3 Floors, 5 Rooms each
-  for (let f = 1; f <= 3; f++) {
-    for (let r = 1; r <= 5; r++) {
-      rooms.push({ roomNo: `${f}0${r}`, floor: f, status: 'Vacant' });
-    }
-  }
-  await Room.deleteMany({}); // Clear old
-  await Room.insertMany(rooms);
-  res.json({ message: '15 Rooms Created Successfully' });
-});
+// Manage Tenants
+router.post('/create-tenant', protect, admin, tenantUploads, createTenant); // NEW
+router.get('/tenants', protect, admin, getAllTenants);
+router.delete('/tenants/:id', protect, admin, deleteTenant);
 
-// GET /api/admin/rooms - View Room Status
-router.get('/rooms', protect, admin, async (req, res) => {
-  const rooms = await Room.find({}).sort({ roomNo: 1 }).populate('currentTenant', 'name');
-  res.json(rooms);
-});
+// Manage Rooms
+router.get('/rooms', protect, admin, getAllRooms);
+router.post('/seed-rooms', protect, admin, seedRooms); // Added protect/admin for safety
 
 module.exports = router;

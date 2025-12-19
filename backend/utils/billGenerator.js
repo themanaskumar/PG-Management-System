@@ -2,12 +2,13 @@ const cron = require('node-cron');
 const User = require('../models/User');
 const Bill = require('../models/Bill');
 const Room = require('../models/Room'); 
+const sendEmail = require('./sendEmail'); // Import Email Helper
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const generateMonthlyBills = () => {
   // SCHEDULE: Run at 00:00 on the 1st day of every month
-  // Syntax: 'minute hour day-of-month month day-of-week'
+  // To test immediately, change to '* * * * *' (every minute)
   cron.schedule('0 0 1 * *', async () => {
     console.log('--- 🤖 Running Monthly Bill Generation ---');
     
@@ -29,11 +30,10 @@ const generateMonthlyBills = () => {
         // 2. Fetch Room Rent Details
         const room = await Room.findOne({ roomNo: tenant.roomNo });
         
-        // DEFAULT RENT LOGIC:
-        // If room has a 'price' or 'rent' field, use it. Otherwise default to 5000.
-        const rentAmount = room && room.price ? room.price : 1500;
+        // Default to 5000 if price not found
+        const rentAmount = room && room.price ? room.price : 5000;
 
-        // 3. Check for Duplicate Bill (Don't charge twice for same month)
+        // 3. Check for Duplicate Bill (Prevent double charging)
         const exists = await Bill.findOne({ 
           user: tenant._id, 
           month: currentMonth, 
@@ -42,6 +42,7 @@ const generateMonthlyBills = () => {
         });
 
         if (!exists) {
+          // A. Create the Bill in Database
           await Bill.create({
             user: tenant._id,
             roomNo: tenant.roomNo,
@@ -52,7 +53,16 @@ const generateMonthlyBills = () => {
             type: 'Rent',
             status: 'Unpaid'
           });
+          
           console.log(`✅ Generated bill for ${tenant.name} (${tenant.roomNo}): ₹${rentAmount}`);
+
+          // B. Send Email Notification
+          const emailSubject = `Rent Due: ${currentMonth} ${currentYear}`;
+          const emailBody = `Hello ${tenant.name},\n\nYour rent bill of ₹${rentAmount} for ${currentMonth} ${currentYear} has been generated.\n\nPlease login to your dashboard and clear the dues by the 5th to avoid late fees.\n\nRegards,\nPG Management Team`;
+          
+          // We await this to ensure logs appear in order, but you could remove await for speed
+          await sendEmail(tenant.email, emailSubject, emailBody);
+
         } else {
           console.log(`Skipping ${tenant.name}: Bill already exists.`);
         }

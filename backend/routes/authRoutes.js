@@ -6,6 +6,7 @@ const { protect, admin } = require("../middleware/authMiddleware");
 const Room = require("../models/Room");
 
 // POST /api/auth/signup
+// (Kept as is, though usually tenants are created via Admin Dashboard now)
 router.post("/signup", async (req, res) => {
   const {
     name, email, password, phone, roomNo, idType, idNumber, deposit, isAdmin,
@@ -33,7 +34,7 @@ router.post("/signup", async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      roomNo: user.roomNo, // <--- ADD THIS LINE (It was missing here)
+      roomNo: user.roomNo,
       isAdmin: user.isAdmin,
       token: generateToken(user._id),
     });
@@ -52,8 +53,13 @@ router.post("/login", async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      roomNo: user.roomNo, // This line is correct
+      roomNo: user.roomNo,
       isAdmin: user.isAdmin,
+      
+      // --- THIS WAS MISSING ---
+      profilePhoto: user.profilePhoto, 
+      // ------------------------
+
       token: generateToken(user._id),
     });
   } else {
