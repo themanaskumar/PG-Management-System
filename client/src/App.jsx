@@ -1,17 +1,30 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Login from './Pages/Login';
-// import Signup from './pages/Signup';  <-- DELETED THIS LINE
 import AdminDashboard from './Pages/AdminDashboard';
 import TenantDashboard from './Pages/TenantDashboard';
-import PrivateRoute from './components/PrivateRoute';
 import { useAuth } from './context/AuthContext';
 
-const HomeRedirect = () => {
-  const { user } = useAuth();
+// --- INLINE PROTECTION COMPONENTS ---
+
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div>Loading...</div>;
   if (!user) return <Navigate to="/login" />;
-  return user.isAdmin ? <Navigate to="/admin" /> : <Navigate to="/dashboard" />;
+  return children;
 };
+
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div>Loading...</div>;
+  // If not logged in OR not an admin, kick them out
+  if (!user || !user.isAdmin) {
+    return <Navigate to="/login" />;
+  }
+  return children;
+};
+
+// --- MAIN APP ---
 
 function App() {
   return (
@@ -20,24 +33,24 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         
-        {/* Redirect root based on role */}
-        <Route path="/" element={<HomeRedirect />} />
+        {/* Default Route: Redirect to Login */}
+        <Route path="/" element={<Navigate to="/login" />} />
 
-        {/* Protected Tenant Routes */}
+        {/* TENANT ROUTE */}
         <Route path="/dashboard" element={
-          <PrivateRoute>
+          <ProtectedRoute>
             <TenantDashboard />
-          </PrivateRoute>
+          </ProtectedRoute>
         } />
 
-        {/* Protected Admin Routes */}
-        <Route path="/admin" element={
-          <PrivateRoute adminOnly={true}>
+        {/* ADMIN ROUTE (Note: Changed from /admin to /admin-dashboard) */}
+        <Route path="/admin-dashboard" element={
+          <AdminRoute>
             <AdminDashboard />
-          </PrivateRoute>
+          </AdminRoute>
         } />
         
-        {/* Catch-all: Redirect unknown routes to login */}
+        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </div>

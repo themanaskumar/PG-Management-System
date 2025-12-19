@@ -1,40 +1,65 @@
-import { createContext, useState, useEffect, useContext } from 'react';
-// import api from './api'; // Uncomment this on Tuesday
+import { createContext, useState, useContext, useEffect } from 'react';
+import api from '../utils/axiosInstance';
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
+
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
+    // 1. Check Local Storage on initial load
+    const userInfo = localStorage.getItem('userInfo');
+    
+    if (userInfo) {
+      try {
+        const parsedUser = JSON.parse(userInfo);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error("Failed to parse user info:", error);
+        localStorage.removeItem('userInfo');
+      }
     }
     setLoading(false);
   }, []);
 
-  const login = (userData, token) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
+  // --- LOGIN FUNCTION ---
+  const login = async (email, password) => {
+    try {
+      const { data } = await api.post('/auth/login', { email, password });
+      
+      // 2. Save entire user object to state AND local storage
+      setUser(data);
+      localStorage.setItem('userInfo', JSON.stringify(data));
+      
+      return data;
+    } catch (error) {
+      throw error;
+    }
   };
 
+  // --- LOGOUT FUNCTION ---
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.removeItem('userInfo');
     setUser(null);
-    window.location.href = '/login';
+    toast.success("Logged out");
+    window.location.href = '/login'; // Force redirect
+  };
+
+  // --- UPDATE USER FUNCTION (For Profile/Settings updates) ---
+  // If you update the user (like profile pic), call this to update state without logging in again
+  const updateUser = (userData) => {
+    const updatedUser = { ...user, ...userData };
+    setUser(updatedUser);
+    localStorage.setItem('userInfo', JSON.stringify(updatedUser));
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, updateUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => useContext(AuthContext);

@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Rent = require('../models/Rent');
 const User = require('../models/User'); 
+const Bill = require('../models/Bill'); // Required for Automated Bills
 const { protect, admin } = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadMiddleware'); // Import the new middleware
-const Bill = require('../models/Bill');
+const upload = require('../middleware/uploadMiddleware'); 
 
 // Helper to convert Month Name to Index (0-11)
 const getMonthIndex = (monthName) => {
@@ -15,8 +15,12 @@ const getMonthIndex = (monthName) => {
   return months.indexOf(monthName);
 };
 
-// --- NEW: Admin Track Rent (The "Left Join" Logic) ---
+// ======================================================
+// 1. ADMIN ROUTES (Must be first)
+// ======================================================
+
 // GET /api/rent/track?month=December&year=2024
+// (Admin Logic to see who has paid and who hasn't)
 router.get('/track', protect, admin, async (req, res) => {
   try {
     const { month, year } = req.query;
@@ -25,41 +29,63 @@ router.get('/track', protect, admin, async (req, res) => {
       return res.status(400).json({ message: "Month and Year are required" });
     }
 
-    // --- 1. Calculate Date Filter ---
+    // A. Calculate Date Filter (Last day of selected month)
     const monthIndex = getMonthIndex(month);
     if (monthIndex === -1) {
       return res.status(400).json({ message: "Invalid month name" });
     }
-
-    // Create a date representing the LAST moment of the selected month
-    // year, monthIndex + 1, 0 gives the last day of the specific month
     const filterDate = new Date(parseInt(year), monthIndex + 1, 0, 23, 59, 59);
 
-    // --- 2. Fetch Valid Tenants ---
-    // Logic: Tenant must be created BEFORE or DURING the selected month.
-    // We exclude tenants who joined in the future relative to the selected date.
+    // B. Fetch Valid Tenants (Joined before/during selected month)
     const tenants = await User.find({ 
       isAdmin: false,
-      createdAt: { $lte: filterDate } // $lte = Less Than or Equal To
+      createdAt: { $lte: filterDate },
+      roomNo: { $ne: null } // Only active tenants with rooms
     }).select('name roomNo email phone');
 
-    // --- 3. Fetch Rent records for the specific month/year ---
+    // C. Fetch Manual Rent Uploads for that month
     const rentRecords = await Rent.find({ month, year: parseInt(year) });
 
-    // --- 4. Merge Data ---
+    // D. Fetch Automated Bills for that month
+    const billRecords = await Bill.find({ month, year: parseInt(year) });
+
+    // E. Merge Data
     const report = tenants.map(tenant => {
-      const record = rentRecords.find(r => r.user.toString() === tenant._id.toString());
+      // Check Manual Uploads
+      const manualRecord = rentRecords.find(r => r.user.toString() === tenant._id.toString());
+      // Check Automated Bills
+      const billRecord = billRecords.find(b => b.user.toString() === tenant._id.toString());
+
+      // Determine Status & Amount
+      let status = 'Not Paid';
+      let amount = 0;
+      let proofUrl = null;
+      let rentId = null;
+
+      // Priority to Manual Uploads (if approved) or Paid Bills
+      if (manualRecord) {
+        status = manualRecord.status; // 'Pending', 'Approved', 'Rejected'
+        amount = manualRecord.amount;
+        proofUrl = manualRecord.proofUrl;
+        rentId = manualRecord._id;
+      } else if (billRecord && billRecord.status === 'Approved') {
+        status = 'Paid (Online)';
+        amount = billRecord.amount;
+        rentId = billRecord._id;
+      } else if (billRecord) {
+        status = 'Unpaid'; // Bill exists but not paid
+        amount = billRecord.amount;
+      }
 
       return {
         tenantId: tenant._id,
         name: tenant.name,
         roomNo: tenant.roomNo,
         phone: tenant.phone,
-        status: record ? record.status : 'Not Paid', 
-        amount: record ? record.amount : 0,
-        rentId: record ? record._id : null,
-        proofUrl: record ? record.proofUrl : null,
-        updatedAt: record ? record.updatedAt : null
+        status, 
+        amount,
+        rentId,
+        proofUrl,
       };
     });
 
@@ -70,18 +96,42 @@ router.get('/track', protect, admin, async (req, res) => {
   }
 });
 
-// --- Standard CRUD Routes ---
+// PUT /api/rent/:id (Admin: Approve/Reject Manual Proof)
+router.put('/:id', protect, admin, async (req, res) => {
+  try {
+    const rent = await Rent.findById(req.params.id);
+    if (rent) {
+      rent.status = req.body.status || rent.status;
+      await rent.save();
+      res.json(rent);
+    } else {
+      res.status(404).json({ message: 'Rent record not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Update failed' });
+  }
+});
 
-// POST /api/rent (Tenant: Submit Proof)
+// ======================================================
+// 2. TENANT ROUTES
+// ======================================================
 
-// POST /api/rent (Tenant: Submit Proof)
-// Notice the middleware: upload.single('image')
+// GET /api/rent/my-bills (Automated System Bills)
+// Used for the Red "Dues" Cards on Dashboard
+router.get('/my-bills', protect, async (req, res) => {
+  try {
+    const bills = await Bill.find({ user: req.user._id }).sort({ createdAt: -1 });
+    res.json(bills);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching bills' });
+  }
+});
+
+// POST /api/rent (Manual Proof Upload)
 router.post('/', protect, upload.single('image'), async (req, res) => {
   try {
     const { month, year, amount } = req.body;
-    
-    // Multer/Cloudinary puts the URL in req.file.path
-    // If no file was uploaded, we might want to handle that (though frontend makes it required)
     const proofUrl = req.file ? req.file.path : null; 
 
     if (!proofUrl) {
@@ -90,10 +140,14 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
 
     const rent = await Rent.create({
       user: req.user._id,
+      name: req.user.name,
+      roomNo: req.user.roomNo,
+      phone: req.user.phone,
       month, 
       year, 
       amount, 
-      proofUrl // Stores the Cloudinary URL (e.g., https://res.cloudinary.com/...)
+      proofUrl,
+      status: 'Pending'
     });
 
     res.status(201).json(rent);
@@ -103,41 +157,14 @@ router.post('/', protect, upload.single('image'), async (req, res) => {
   }
 });
 
-// GET /api/rent (History for individual tenant)
+// GET /api/rent (Manual Upload History)
+// Used for the "Rents" Table on Dashboard
 router.get('/', protect, async (req, res) => {
   try {
-    // Tenants only see their own history
     const rents = await Rent.find({ user: req.user._id }).sort({ createdAt: -1 });
     res.json(rents);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching rents' });
-  }
-});
-
-// PUT /api/rent/:id (Admin: Approve/Reject)
-router.put('/:id', protect, admin, async (req, res) => {
-  try {
-    const rent = await Rent.findById(req.params.id);
-    if (rent) {
-      rent.status = req.body.status || rent.status;
-      const updatedRent = await rent.save();
-      res.json(updatedRent);
-    } else {
-      res.status(404).json({ message: 'Rent record not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: 'Update failed' });
-  }
-});
-
-// GET /api/rent/my-bills
-router.get('/my-bills', protect, async (req, res) => {
-  try {
-    // Fetch unpaid bills first
-    const bills = await Bill.find({ user: req.user._id }).sort({ status: -1, createdAt: -1 });
-    res.json(bills);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching bills' });
   }
 });
 

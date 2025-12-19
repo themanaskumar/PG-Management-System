@@ -13,6 +13,7 @@ const AdminDashboard = () => {
   // Data States
   const [complaints, setComplaints] = useState([]);
   const [tenants, setTenants] = useState([]);
+  const [pastTenants, setPastTenants] = useState([]); // --- NEW STATE ---
   const [rooms, setRooms] = useState([]);
   const [trackingData, setTrackingData] = useState([]);
 
@@ -23,13 +24,7 @@ const AdminDashboard = () => {
 
   // Form States
   const [newTenant, setNewTenant] = useState({ 
-    name: '', 
-    email: '', 
-    phone: '', 
-    roomNo: '', 
-    deposit: '', 
-    idType: 'aadhar', 
-    idNumber: '' 
+    name: '', email: '', phone: '', roomNo: '', deposit: '', idType: 'aadhar', idNumber: '' 
   });
   
   // File States
@@ -40,6 +35,7 @@ const AdminDashboard = () => {
     if (activeView === 'rent') fetchTrackedRents();
     if (activeView === 'complaint') fetchComplaints();
     if (activeView === 'tenant') { fetchTenants(); fetchRooms(); }
+    if (activeView === 'history') fetchPastTenants(); // --- NEW CALL ---
   }, [activeView, trackMonth, trackYear]);
 
   // --- FETCH FUNCTIONS ---
@@ -53,6 +49,9 @@ const AdminDashboard = () => {
   const fetchComplaints = async () => { try { const { data } = await api.get('/complaints'); setComplaints(data); } catch(e){} };
   const fetchTenants = async () => { try { const { data } = await api.get('/admin/tenants'); setTenants(data); } catch(e){} };
   const fetchRooms = async () => { try { const { data } = await api.get('/admin/rooms'); setRooms(data); } catch(e){} };
+  
+  // --- NEW FETCH FUNCTION ---
+  const fetchPastTenants = async () => { try { const { data } = await api.get('/admin/history'); setPastTenants(data); } catch(e){} };
 
   // --- ACTION HANDLERS ---
   const handleRentAction = async (id, status) => {
@@ -64,17 +63,14 @@ const AdminDashboard = () => {
   };
 
   const handleDeleteTenant = async (id) => {
-    if(!window.confirm("Remove tenant? This will free the room.")) return;
-    try { await api.delete(`/admin/tenants/${id}`); toast.success('Tenant Removed'); fetchTenants(); fetchRooms(); } catch (e) { toast.error('Failed'); }
+    if(!window.confirm("Remove tenant? This will free the room and archive the tenant.")) return;
+    try { await api.delete(`/admin/tenants/${id}`); toast.success('Tenant Archived & Removed'); fetchTenants(); fetchRooms(); } catch (e) { toast.error('Failed'); }
   };
 
-  // --- ADD TENANT HANDLER (Multipart) ---
+  // --- ADD TENANT HANDLER ---
   const handleAddTenant = async (e) => {
     e.preventDefault();
-
-    if (!idProofFile) {
-      return toast.error("Please upload the ID Proof document.");
-    }
+    if (!idProofFile) return toast.error("Please upload the ID Proof document.");
 
     const formData = new FormData();
     formData.append('name', newTenant.name);
@@ -84,27 +80,17 @@ const AdminDashboard = () => {
     formData.append('deposit', newTenant.deposit);
     formData.append('idType', newTenant.idType);
     formData.append('idNumber', newTenant.idNumber);
-    
-    // Append Files
     formData.append('idProof', idProofFile);
-    if (profilePhotoFile) {
-      formData.append('profilePhoto', profilePhotoFile);
-    }
+    if (profilePhotoFile) formData.append('profilePhoto', profilePhotoFile);
 
     try {
       await api.post('/admin/create-tenant', formData);
       toast.success('Tenant Created Successfully');
-      
-      // Reset Form
       setNewTenant({ name: '', email: '', phone: '', roomNo: '', deposit: '', idType: 'aadhar', idNumber: '' });
-      setIdProofFile(null);
-      setProfilePhotoFile(null);
-      // Reset file inputs visually
+      setIdProofFile(null); setProfilePhotoFile(null);
       document.getElementById('file-id-proof').value = "";
       document.getElementById('file-profile').value = "";
-
-      fetchTenants(); 
-      fetchRooms();
+      fetchTenants(); fetchRooms();
     } catch (e) { 
       toast.error(e.response?.data?.message || 'Failed to create tenant'); 
     }
@@ -125,7 +111,7 @@ const AdminDashboard = () => {
         {/* Header */}
         <div className="flex justify-between items-center mb-10 bg-white p-6 rounded-xl shadow-sm">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">{activeView === 'menu' ? 'Admin Dashboard' : activeView.charAt(0).toUpperCase() + activeView.slice(1)}</h1>
+            <h1 className="text-3xl font-bold text-gray-800">{activeView === 'menu' ? 'Admin Dashboard' : activeView.replace(/([A-Z])/g, ' $1').trim()}</h1>
             <p className="text-sm text-gray-500">Welcome back, {user?.name}</p>
           </div>
           <div className="flex gap-4">
@@ -136,10 +122,12 @@ const AdminDashboard = () => {
 
         {/* Menu View */}
         {activeView === 'menu' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <MenuCard title="Rent Tracking" desc="Track monthly payments" color="bg-blue-600" view="rent" />
             <MenuCard title="Complaints" desc="Track issues" color="bg-orange-500" view="complaint" />
             <MenuCard title="Tenant Management" desc="Manage Tenants & Rooms" color="bg-green-600" view="tenant" />
+            {/* --- NEW MENU CARD --- */}
+            <MenuCard title="Past Tenants" desc="View Archived History" color="bg-gray-600" view="history" />
           </div>
         )}
 
@@ -168,7 +156,14 @@ const AdminDashboard = () => {
                       <td className="p-4"><span className={`px-3 py-1 rounded-full text-xs font-bold border ${record.status === 'Approved' ? 'bg-green-100 text-green-700' : record.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-50 text-red-700'}`}>{record.status}</span></td>
                       <td className="p-4">{record.amount > 0 ? `₹${record.amount}` : '-'}</td>
                       <td className="p-4">
-                        {record.proofUrl ? <a href={record.proofUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline text-sm">View Proof</a> : <span className="text-gray-400 text-sm">No Submission</span>}
+                        {record.proofUrl?.includes('Razorpay') ? (
+                          <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">
+                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                             RazorPay
+                          </span>
+                        ) : record.proofUrl ? (
+                          <a href={record.proofUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline text-sm hover:text-blue-800">View Proof</a>
+                        ) : <span className="text-gray-400 text-sm">No Submission</span>}
                       </td>
                       <td className="p-4">
                         {record.status === 'Pending' && (
@@ -221,6 +216,60 @@ const AdminDashboard = () => {
                      </tr>
                    ))}
                    {filteredComplaints.length === 0 && <tr><td colSpan="6" className="p-8 text-center text-gray-400">No complaints.</td></tr>}
+                 </tbody>
+               </table>
+             </div>
+           </div>
+        )}
+
+        {/* --- NEW HISTORY VIEW (PAST TENANTS) --- */}
+        {activeView === 'history' && (
+           <div className="bg-white rounded-xl shadow p-6">
+             <div className="flex justify-between items-center mb-6">
+               <h3 className="text-xl font-bold text-gray-700">Archived Tenants</h3>
+             </div>
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-sm">
+                 <thead className="bg-gray-50 text-gray-500 border-b">
+                   <tr>
+                     <th className="p-3">Profile</th>
+                     <th className="p-3">Tenant Details</th>
+                     <th className="p-3">Stay Details</th>
+                     <th className="p-3">ID Proof</th>
+                     <th className="p-3">Dates</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y">
+                   {pastTenants.map(t => (
+                     <tr key={t._id} className="hover:bg-gray-50">
+                       <td className="p-3">
+                         <img 
+                           src={t.profilePhoto || "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg"} 
+                           alt="profile" 
+                           className="w-10 h-10 rounded-full object-cover border shadow-sm grayscale opacity-75"
+                         />
+                       </td>
+                       <td className="p-3">
+                         <div className="font-bold text-gray-800">{t.name}</div>
+                         <div className="text-xs text-gray-500">{t.email}</div>
+                         <div className="text-xs text-gray-500">{t.phone}</div>
+                       </td>
+                       <td className="p-3">
+                         <div className="text-gray-500 text-xs">Past Room:</div>
+                         <div className="font-mono font-bold text-gray-700 text-lg">{t.roomNo}</div>
+                       </td>
+                       <td className="p-3">
+                         <div className="text-xs font-bold uppercase bg-gray-100 px-2 py-0.5 rounded text-gray-600 inline-block mb-1">{t.idType}</div>
+                         <br/>
+                         <a href={t.idProof} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs">View Document</a>
+                       </td>
+                       <td className="p-3 text-xs">
+                         <div className="text-green-700">Joined: {new Date(t.joinedAt).toLocaleDateString()}</div>
+                         <div className="text-red-700 font-bold">Left: {new Date(t.leftAt).toLocaleDateString()}</div>
+                       </td>
+                     </tr>
+                   ))}
+                   {pastTenants.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-gray-400">No history available.</td></tr>}
                  </tbody>
                </table>
              </div>

@@ -13,12 +13,35 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'pg-management-proofs', // The folder name in your Cloudinary Dashboard
+    folder: 'pg-management-proofs',
     allowed_formats: ['jpg', 'png', 'jpeg', 'pdf'],
   },
 });
 
 // 3. Initialize Multer
 const upload = multer({ storage: storage });
+
+// --- NEW HELPER: Delete image from Cloudinary ---
+// We attach this to the 'upload' object so we can use it in controllers
+// without breaking existing "const upload = require(...)" imports.
+upload.deleteFromCloudinary = async (imageUrl) => {
+  if (!imageUrl || !imageUrl.includes('cloudinary')) return;
+
+  try {
+    // Extract Public ID from URL
+    // Example: https://.../v12345/pg-management-proofs/abcde.jpg
+    // We need: "pg-management-proofs/abcde"
+    
+    const parts = imageUrl.split('/');
+    const fileName = parts.pop(); // "abcde.jpg"
+    const folder = parts.pop();   // "pg-management-proofs"
+    const publicId = `${folder}/${fileName.split('.')[0]}`;
+
+    await cloudinary.uploader.destroy(publicId);
+    console.log(`🗑️ Deleted old image: ${publicId}`);
+  } catch (error) {
+    console.error("Failed to delete old image:", error);
+  }
+};
 
 module.exports = upload;

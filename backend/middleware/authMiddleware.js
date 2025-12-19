@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-// You will create the User model on Tuesday, so just require it generally
 const User = require('../models/User'); 
 
 const protect = async (req, res, next) => {
@@ -10,15 +9,25 @@ const protect = async (req, res, next) => {
       // Get token from header (Format: "Bearer <token>")
       token = req.headers.authorization.split(' ')[1];
 
+      // --- SAFETY CHECK: Prevent "jwt malformed" crashes ---
+      if (!token || token === 'undefined' || token === 'null') {
+        return res.status(401).json({ message: 'Not authorized, invalid token format' });
+      }
+
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       // Get user from the token
       req.user = await User.findById(decoded.id).select('-password');
 
+      // Check if user still exists in DB
+      if (!req.user) {
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+
       next();
     } catch (error) {
-      console.error(error);
+      console.error("Token Verification Failed:", error.message);
       res.status(401).json({ message: 'Not authorized, token failed' });
     }
   }
@@ -38,5 +47,3 @@ const admin = (req, res, next) => {
 };
 
 module.exports = { protect, admin };
-
-// backend/middleware/authMiddleware.js

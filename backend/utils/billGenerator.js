@@ -7,8 +7,6 @@ const sendEmail = require('./sendEmail'); // Import Email Helper
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const generateMonthlyBills = () => {
-  // SCHEDULE: Run at 00:00 on the 1st day of every month
-  // To test immediately, change to '* * * * *' (every minute)
   cron.schedule('0 0 1 * *', async () => {
     console.log('--- 🤖 Running Monthly Bill Generation ---');
     
@@ -31,7 +29,7 @@ const generateMonthlyBills = () => {
         const room = await Room.findOne({ roomNo: tenant.roomNo });
         
         // Default to 5000 if price not found
-        const rentAmount = room && room.price ? room.price : 5000;
+        const rentAmount = room && room.price ? room.price : 1700;
 
         // 3. Check for Duplicate Bill (Prevent double charging)
         const exists = await Bill.findOne({ 

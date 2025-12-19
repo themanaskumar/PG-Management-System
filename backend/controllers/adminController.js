@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const Room = require('../models/Room');
+const sendEmail = require('../utils/sendEmail');
+const PastTenant = require('../models/PastTenant');
 
 // --- 1. CREATE TENANT ---
 exports.createTenant = async (req, res) => {
@@ -20,7 +22,7 @@ exports.createTenant = async (req, res) => {
       return res.status(400).json({ message: "Room is already occupied." });
     }
 
-    // C. Get URLs (Middleware already uploaded them)
+    // C. Get URLs
     const idProofUrl = req.files.idProof[0].path;
     
     let profilePhotoUrl = "";
@@ -28,8 +30,7 @@ exports.createTenant = async (req, res) => {
       profilePhotoUrl = req.files.profilePhoto[0].path;
     }
 
-    // --- NEW PASSWORD LOGIC ---
-    // Extract everything before the '@' symbol
+    // --- PASSWORD LOGIC ---
     // Example: "john.doe@gmail.com" -> password is "john.doe"
     const defaultPassword = email.split('@')[0];
 
@@ -37,7 +38,7 @@ exports.createTenant = async (req, res) => {
     const newTenant = new User({
       name,
       email,
-      password: defaultPassword, // Plain text (Model will hash it)
+      password: defaultPassword, // Model will hash this
       phone,
       roomNo,
       deposit: deposit || 0,
@@ -54,6 +55,30 @@ exports.createTenant = async (req, res) => {
     room.currentTenant = newTenant._id;
     await room.save();
 
+    // --- F. SEND WELCOME EMAIL ---
+    const emailSubject = "Welcome to DLF Boys' Hostel - Login Credentials";
+    const emailBody = `Hello ${name},
+
+Welcome to DLF Boys' Hostel! Your tenant account has been successfully created.
+
+Here are your login details:
+URL: http://localhost:5173/login
+Email: ${email}
+Password: ${defaultPassword}
+Room No: ${roomNo}
+ID: ${idType} : ${idNumber}
+ID Proof: ${idProofUrl}
+Phone No.: ${phone}
+Deposit: ${deposit}
+
+IMPORTANT: Please login to your dashboard and change your password immediately under the 'Settings' tab.
+
+Regards,
+Zacharias P Thomas`;
+
+    // Send the email (we await it so we know if it fails in the logs)
+    await sendEmail(email, emailSubject, emailBody);
+
     res.status(201).json({ 
       message: `Tenant created. Password set to: ${defaultPassword}`, 
       tenant: newTenant 
@@ -65,7 +90,7 @@ exports.createTenant = async (req, res) => {
   }
 };
 
-// ... (Keep getAllTenants, deleteTenant, getAllRooms, seedRooms exactly as they were)
+// --- 2. GET ALL TENANTS ---
 exports.getAllTenants = async (req, res) => {
   try {
     const tenants = await User.find({ isAdmin: false }).select('-password');
@@ -75,26 +100,53 @@ exports.getAllTenants = async (req, res) => {
   }
 };
 
+// --- 3. DELETE TENANT (ARCHIVE & REMOVE) ---
 exports.deleteTenant = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
-    if (user) {
-      const room = await Room.findOne({ roomNo: user.roomNo });
-      if (room) {
-        room.status = 'Vacant';
-        room.currentTenant = null; 
-        await room.save();
-      }
-      await User.findByIdAndDelete(req.params.id);
-      res.json({ message: 'Tenant removed and room freed' });
-    } else {
-      res.status(404).json({ message: 'User not found' });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
+
+    // A. Archive to PastTenant Collection
+    await PastTenant.create({
+      originalId: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      roomNo: user.roomNo,
+      idType: user.idType,
+      idNumber: user.idNumber,
+      idProof: user.idProof,      // Keeping the file URL
+      profilePhoto: user.profilePhoto, // Keeping the file URL
+      deposit: user.deposit,
+      joinedAt: user.createdAt,
+      leftAt: new Date()
+    });
+
+    // B. Free up the Room
+    const room = await Room.findOne({ roomNo: user.roomNo });
+    if (room) {
+      room.status = 'Vacant';
+      room.currentTenant = null; 
+      await room.save();
+    }
+
+    // C. Delete from Active Users
+    // Note: We DO NOT delete the images from Cloudinary here, 
+    // because we want them accessible in the PastTenant record.
+    await User.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Tenant archived to history and room freed.' });
+
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: "Error deleting tenant" });
   }
 };
 
+// --- 4. GET ALL ROOMS ---
 exports.getAllRooms = async (req, res) => {
   try {
     const rooms = await Room.find({}).sort({ roomNo: 1 }).populate('currentTenant', 'name');
@@ -104,6 +156,7 @@ exports.getAllRooms = async (req, res) => {
   }
 };
 
+// --- 5. SEED ROOMS ---
 exports.seedRooms = async (req, res) => {
   try {
     const rooms = [];
@@ -117,5 +170,16 @@ exports.seedRooms = async (req, res) => {
     res.json({ message: '15 Rooms Created Successfully' });
   } catch (error) {
     res.status(500).json({ message: "Error seeding rooms" });
+  }
+};
+
+// --- 6. GET PAST TENANTS (HISTORY) ---
+exports.getPastTenants = async (req, res) => {
+  try {
+    // Sort by 'leftAt' descending (most recent leavers first)
+    const history = await PastTenant.find({}).sort({ leftAt: -1 });
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching tenant history" });
   }
 };

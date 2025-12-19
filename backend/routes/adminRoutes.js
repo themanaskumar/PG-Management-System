@@ -7,7 +7,8 @@ const {
   getAllTenants, 
   deleteTenant, 
   getAllRooms, 
-  seedRooms 
+  seedRooms,
+  getPastTenants
 } = require('../controllers/adminController');
 
 // Configuration for uploading multiple files
@@ -26,5 +27,6 @@ router.delete('/tenants/:id', protect, admin, deleteTenant);
 // Manage Rooms
 router.get('/rooms', protect, admin, getAllRooms);
 router.post('/seed-rooms', protect, admin, seedRooms); // Added protect/admin for safety
+router.get('/history', protect, admin, getPastTenants);
 
 module.exports = router;

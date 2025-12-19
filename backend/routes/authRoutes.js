@@ -4,9 +4,9 @@ const User = require("../models/User");
 const generateToken = require("../utils/generateToken");
 const { protect, admin } = require("../middleware/authMiddleware");
 const Room = require("../models/Room");
+const upload = require("../middleware/uploadMiddleware"); // Import the upload middleware
 
 // POST /api/auth/signup
-// (Kept as is, though usually tenants are created via Admin Dashboard now)
 router.post("/signup", async (req, res) => {
   const {
     name, email, password, phone, roomNo, idType, idNumber, deposit, isAdmin,
@@ -55,11 +55,7 @@ router.post("/login", async (req, res) => {
       email: user.email,
       roomNo: user.roomNo,
       isAdmin: user.isAdmin,
-      
-      // --- THIS WAS MISSING ---
-      profilePhoto: user.profilePhoto, 
-      // ------------------------
-
+      profilePhoto: user.profilePhoto, // Ensure this is sent
       token: generateToken(user._id),
     });
   } else {
@@ -71,6 +67,56 @@ router.post("/login", async (req, res) => {
 router.get("/users", protect, admin, async (req, res) => {
   const users = await User.find({ isAdmin: false });
   res.json(users);
+});
+
+// PUT /api/auth/change-password
+router.put('/change-password', protect, async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const user = await User.findById(req.user._id);
+
+  if (user && (await user.matchPassword(oldPassword))) {
+    user.password = newPassword;
+    await user.save();
+    res.json({ message: 'Password updated successfully' });
+  } else {
+    res.status(401).json({ message: 'Invalid old password' });
+  }
+});
+
+// --- NEW: UPDATE PROFILE PHOTO ---
+router.put('/update-profile', protect, upload.single('profilePhoto'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // 1. Check if a file was uploaded
+    if (req.file) {
+      // 2. Delete the old photo if it exists
+      if (user.profilePhoto) {
+        await upload.deleteFromCloudinary(user.profilePhoto);
+      }
+      // 3. Update with new photo URL
+      user.profilePhoto = req.file.path;
+      
+      await user.save();
+
+      // Return the updated user info
+      res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        roomNo: user.roomNo,
+        isAdmin: user.isAdmin,
+        profilePhoto: user.profilePhoto,
+        token: generateToken(user._id) 
+      });
+    } else {
+      res.status(400).json({ message: "No image file provided" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Profile update failed" });
+  }
 });
 
 module.exports = router;
