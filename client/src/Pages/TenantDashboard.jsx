@@ -210,7 +210,7 @@ const TenantDashboard = () => {
   ];
 
   return (
-    <div className="p-8 max-w-6xl mx-auto min-h-screen bg-gray-50">
+    <div className="p-8 max-w-6xl mx-auto bg-gray-50">
       
       {/* HEADER WITH PROFILE PIC */}
       <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-sm">
