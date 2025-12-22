@@ -18,7 +18,7 @@ router.post("/signup", async (req, res) => {
   if (!isAdmin) {
     const room = await Room.findOne({ roomNo });
     if (!room) return res.status(400).json({ message: `Room ${roomNo} does not exist.` });
-    if (room.status === "Occupied") return res.status(400).json({ message: `Room ${roomNo} is already occupied.` });
+    if (room.tenantCount >= 2) return res.status(400).json({ message: `Room ${roomNo} is already fully occupied.` });
   }
 
   const user = await User.create({
@@ -26,7 +26,14 @@ router.post("/signup", async (req, res) => {
   });
 
   if (!isAdmin && user) {
-    await Room.findOneAndUpdate({ roomNo }, { status: "Occupied", currentTenant: user._id });
+    const room = await Room.findOne({ roomNo });
+    if (room) {
+      room.currentTenants = room.currentTenants || [];
+      room.currentTenants.push(user._id);
+      if (room.currentTenants.length === 1) room.status = 'Partially Occupied';
+      else if (room.currentTenants.length >= 2) room.status = 'Occupied';
+      await room.save();
+    }
   }
 
   if (user) {

@@ -28,8 +28,8 @@ const generateMonthlyBills = () => {
         // 2. Fetch Room Rent Details
         const room = await Room.findOne({ roomNo: tenant.roomNo });
         
-        // Default to 5000 if price not found
-        const rentAmount = room && room.price ? room.price : 1700;
+        // Default to 1500 if price not found
+        const rentAmount = room && room.price ? room.price : 1500;
 
         // 3. Check for Duplicate Bill (Prevent double charging)
         const exists = await Bill.findOne({ 

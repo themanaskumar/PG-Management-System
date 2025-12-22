@@ -26,6 +26,7 @@ const TenantDashboard = () => {
   const [rents, setRents] = useState([]);
   const [complaints, setComplaints] = useState([]);
   const [bills, setBills] = useState([]); 
+  const [notices, setNotices] = useState([]);
   const [activeTab, setActiveTab] = useState('rent');
 
   // Filters
@@ -51,14 +52,16 @@ const TenantDashboard = () => {
   // --- API CALLS ---
   const fetchData = async () => {
     try {
-      const [rentRes, compRes, billRes] = await Promise.all([
+      const [rentRes, compRes, billRes, noticeRes] = await Promise.all([
         api.get('/rent'),
         api.get('/complaints'),
-        api.get('/rent/my-bills')
+        api.get('/rent/my-bills'),
+        api.get('/admin/notices')
       ]);
       setRents(rentRes.data);
       setComplaints(compRes.data);
       setBills(billRes.data);
+      setNotices(noticeRes.data);
     } catch (err) { console.error(err); }
   };
 
@@ -246,6 +249,7 @@ const TenantDashboard = () => {
         <button onClick={() => setActiveTab('rent')} className={`px-4 py-2 ${activeTab === 'rent' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Rents</button>
         <button onClick={() => setActiveTab('complaint')} className={`px-4 py-2 ${activeTab === 'complaint' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Complaints</button>
         <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Settings</button>
+        <button onClick={() => setActiveTab('notices')} className={`px-4 py-2 ${activeTab === 'notices' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-500'}`}>Notices</button>
       </div>
 
       {/* RENT CONTENT */}
@@ -342,6 +346,22 @@ const TenantDashboard = () => {
                 Update Password
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* NOTICES */}
+      {activeTab === 'notices' && (
+        <div className="bg-white p-6 rounded-xl shadow">
+          <h3 className="text-xl font-bold mb-4">Notices</h3>
+          <div className="space-y-4">
+            {notices.map(n => (
+              <div key={n._id} className="border p-4 rounded">
+                <div className="font-bold">{n.title}</div>
+                <div className="text-xs text-gray-500">{new Date(n.createdAt).toLocaleString()}</div>
+                <div className="mt-2">{n.message}</div>
+              </div>
+            ))}
+            {notices.length === 0 && <div className="text-gray-400">No notices.</div>}
           </div>
         </div>
       )}
